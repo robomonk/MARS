@@ -1,0 +1,23 @@
+name: MARS_env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - pip
+  # Core Google Cloud & Web Frameworks from conda-forge
+  - google-cloud-firestore
+  - google-cloud-storage
+  - google-cloud-bigquery
+  - google-cloud-aiplatform
+  - google-api-python-client
+  - google-auth-httplib2
+  - fastapi
+  - uvicorn
+  - pytest
+  - pytest-mock
+  - python-dotenv
+  - requests
+  # Pip-only packages
+  - pip:
+    - google-generativeai~=0.5.4
