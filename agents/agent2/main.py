@@ -39,22 +39,26 @@ async def design_experiment_endpoint(hypothesis: Hypothesis):
             raise HTTPException(status_code=503, detail="Protocol confirmation failed with Agent 1.")
         print(f"Protocol confirmed with Agent 1: {confirmation_status}")
 
-        # 4. Check Build Feasibility (Agent 3) - Placeholder
-        # For now, let's imagine deriving requirements from the protocol steps
-        # This is a simplified version; actual requirements would be more detailed.
-        all_requirements = []
-        for step in protocol.validation_steps:
-            all_requirements.append(f"Requirement for step '{step['step_id']}': {step['description']}'")
-            # In a real scenario, you'd extract data_requirements, tool_requirements etc.
+        # 4. Check Build Feasibility (Agent 3)
+        # The check_build_feasibility function now takes validation_steps and linked_hypothesis_id
+        # and returns a FeasibilityAssessment object.
 
-        feasibility = check_build_feasibility(all_requirements)
-        protocol.feasibility_assessment = feasibility # Update protocol with assessment
-        print(f"Feasibility check from Agent 3: {feasibility}")
+        feasibility_assessment_obj = check_build_feasibility(
+            validation_steps=protocol.validation_steps,
+            linked_hypothesis_id=protocol.linked_hypothesis_id
+        )
+        protocol.feasibility_assessment = feasibility_assessment_obj # Assign the object directly
 
-        if not feasibility.get("feasible", False):
-             # Potentially loop back, adjust protocol, or notify user
-            print(f"Warning: Experiment for {protocol.linked_hypothesis_id} may not be feasible.")
+        print(f"Feasibility assessment for Hypothesis {protocol.linked_hypothesis_id}:")
+        print(f"  Data Obtainability: {protocol.feasibility_assessment.data_obtainability}")
+        print(f"  Tools Availability: {protocol.feasibility_assessment.tools_availability}")
+        print(f"  Confidence Score: {protocol.feasibility_assessment.confidence_score}")
+        print(f"  Summary: {protocol.feasibility_assessment.summary}")
 
+        # Example: Check confidence score
+        if protocol.feasibility_assessment.confidence_score < 0.5:
+            print(f"Warning: Confidence score for experiment feasibility is low ({protocol.feasibility_assessment.confidence_score}).")
+        # For now, we proceed regardless of the score, but this is where one might halt or adapt.
 
         return protocol
 
