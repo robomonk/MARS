@@ -1,8 +1,5 @@
 import uuid
-# Removed pydantic BaseModel import, as models are now dataclasses
-from .models import Hypothesis, Protocol # Importing models from .models
-
-# Removed commented-out local model definitions
+from .models import Hypothesis, Protocol, ValidationStep, FeasibilityAssessment # Added ValidationStep and FeasibilityAssessment
 
 def decompose_hypothesis(hypothesis: Hypothesis) -> list[str]:
     """
@@ -22,20 +19,29 @@ def decompose_hypothesis(hypothesis: Hypothesis) -> list[str]:
 def generate_protocol(hypothesis_id: str, premises: list[str]) -> Protocol:
     """
     Generates an experimental protocol based on key premises.
-    Placeholder implementation.
     """
-    steps = []
+    validation_steps = []
     for i, premise in enumerate(premises):
-        steps.append({
-            "step_id": f"step_{i+1}",
-            "description": f"Test premise: {premise}",
-            "metrics": [], # Placeholder for metrics
-            "data_requirements": [], # Placeholder
-            "tool_requirements": [] # Placeholder
-        })
+        validation_steps.append(
+            ValidationStep(
+                step_id=f"step_{i+1}",
+                description=f"Test premise: {premise}",
+                # status is "PENDING" by default
+                # results is "" by default
+            )
+        )
+
+    # Define a default FeasibilityAssessment
+    default_feasibility = FeasibilityAssessment(
+        data_obtainability='UNAVAILABLE', # Default value
+        tools_availability='REQUIRES_DEVELOPMENT', # Default value
+        confidence_score=0.1, # Default low confidence
+        summary='Initial feasibility assessment pending detailed analysis.' # Default summary
+    )
+
     return Protocol(
         protocol_id=str(uuid.uuid4()),
         linked_hypothesis_id=hypothesis_id,
-        validation_steps=steps,
-        feasibility_assessment={"status": "pending_check"} # Initial status
+        validation_steps=validation_steps, # Now a list of ValidationStep objects
+        feasibility_assessment=default_feasibility # Proper FeasibilityAssessment object
     )

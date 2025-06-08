@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from agents.agent2.main import app
-from agents.agent2.models import Hypothesis, Protocol # Adjusted path
+from agents.agent2.models import Hypothesis, Protocol
 
 client = TestClient(app)
 
@@ -10,11 +10,11 @@ def test_design_experiment_endpoint_success():
         "hypothesis_id": "hyp_main_001",
         "statement": "If sunlight exposure increases, plant growth will accelerate. This is observable.",
         "core_assumptions": ["Sunlight provides energy for photosynthesis.", "The plant is healthy."],
-        "description": "A test hypothesis regarding plant growth and sunlight." # Added mandatory description
+        "description": "A test hypothesis regarding plant growth and sunlight."
     }
     response = client.post("/design_experiment/", json=hypothesis_payload)
 
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     protocol_data = response.json()
 
     assert "protocol_id" in protocol_data
@@ -22,55 +22,43 @@ def test_design_experiment_endpoint_success():
     assert "validation_steps" in protocol_data
     assert isinstance(protocol_data["validation_steps"], list)
 
-    # Check if premises from statement and core_assumptions are in validation steps descriptions
-    # Original statement parts: "If sunlight exposure increases, plant growth will accelerate", "This is observable"
-    # Core assumptions: "Sunlight provides energy for photosynthesis.", "The plant is healthy."
-    # Expected decomposed unique premises:
     expected_premises_in_steps = {
         "If sunlight exposure increases, plant growth will accelerate",
         "This is observable",
-        "Sunlight provides energy for photosynthesis.", # Retains period from assumption
-        "The plant is healthy." # Retains period from assumption
+        "Sunlight provides energy for photosynthesis.",
+        "The plant is healthy."
     }
     assert len(protocol_data["validation_steps"]) == len(expected_premises_in_steps)
 
-
-    found_in_steps_count = 0
-    step_descriptions = [step['description'] for step in protocol_data["validation_steps"]]
-
+    step_descriptions = {step['description'] for step in protocol_data["validation_steps"]}
     for expected_premise in expected_premises_in_steps:
-        found = False
-        for desc in step_descriptions:
-            if expected_premise in desc: # Check if the exact premise is part of the step description
-                found = True
-                break
-        if found:
-            found_in_steps_count +=1
-
-    assert found_in_steps_count == len(expected_premises_in_steps), \
-        f"Expected {len(expected_premises_in_steps)} premises to be represented in step descriptions, but found {found_in_steps_count}"
-
+        assert any(expected_premise in full_desc for full_desc in step_descriptions)
 
     assert "feasibility_assessment" in protocol_data
-    # Default feasibility from placeholder:
-    assert protocol_data["feasibility_assessment"]["feasible"] == True
-    assert "details" in protocol_data["feasibility_assessment"]
+    # This test calls the actual check_build_feasibility, which (without specific mocks for fetch_external_data)
+    # will result in default findings (no "Found " in results from the default fetch_external_data).
+    actual_assessment = protocol_data["feasibility_assessment"]
+    assert actual_assessment["data_obtainability"] == 'UNAVAILABLE' # Default from no "Found " in data queries
+    assert actual_assessment["tools_availability"] == 'REQUIRES_DEVELOPMENT' # Default from no "Found " in tool queries
+    assert actual_assessment["confidence_score"] == 0.5 # Base 0.5, no positive findings for data/tools
+    assert "Feasibility assessment for Hypothesis ID: hyp_main_001" in actual_assessment["summary"]
+    assert "Initial feasibility assessment pending detailed analysis." not in actual_assessment["summary"]
+    # Check for part of the generated query summary
+    assert "simulated_abstract_for_Public_datasets_for_Test_premise" in actual_assessment["summary"]
+
 
 def test_design_experiment_endpoint_empty_hypothesis():
-    # Test with a hypothesis that might result in no key premises
     hypothesis_payload = {
         "hypothesis_id": "hyp_empty_002",
         "statement": "",
         "core_assumptions": [],
-        "description": "An empty hypothesis for testing." # Added mandatory description
+        "description": "An empty hypothesis for testing."
     }
     response = client.post("/design_experiment/", json=hypothesis_payload)
 
-    # This should result in an error because decompose_hypothesis would return empty
     assert response.status_code == 400
     assert "Could not extract key premises" in response.json()["detail"]
 
 def test_design_experiment_endpoint_invalid_payload():
-    # Missing required fields (e.g. statement, description, core_assumptions)
     response = client.post("/design_experiment/", json={"hypothesis_id": "test_only_id"})
-    assert response.status_code == 422 # Unprocessable Entity for Pydantic validation error
+    assert response.status_code == 422
