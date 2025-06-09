@@ -38,11 +38,18 @@ class BuildStep(BaseModel):
     name: str
     details: Optional[Dict] = None # Changed from dict to Dict
 
+class ExecutionError(BaseModel): # New model for structured errors
+    step_index: int
+    step_name: str
+    step_type: str
+    message: str
+
 class BuildPlan(BaseModel):
     plan_id: str
     protocol_id: str # Added by me in previous step, setup script also has it
     steps: List[BuildStep]
-    status: str = 'pending_approval' # e.g., pending_approval, approved, failed
+    status: str = 'pending_approval' # e.g., pending_approval, approved, failed, execution_started, completed
+    error_details: Optional[ExecutionError] = None # Changed from error_message: Optional[str]
 
 class FeasibilityResponse(BaseModel):
     status: str # e.g., FEASIBLE, NOT_FEASIBLE
