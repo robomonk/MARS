@@ -2,11 +2,19 @@
 from fastapi import FastAPI, HTTPException
 from typing import List, Optional # Ensure these are imported if models use them
 import uuid
-from .models import AbstractProtocol, BuildPlan, FeasibilityResponse, ConfirmationStatus, BuildStep
+import os # For environment variables
+
+from .models import AbstractProtocol, BuildPlan, FeasibilityResponse, ConfirmationStatus, BuildStep, ExecutionError # Add ExecutionError
 from .plan_translator import translate_protocol_to_build_plan
 from .state_manager import global_state_manager
+from .execution_engine import execute_build_step # Import the new function
 
 app = FastAPI(title="Agent 3: Experiment Builder")
+
+# Retrieve GCP Project ID and Location from environment variables
+# These would need to be set in the environment where Agent 3 runs.
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "your-gcp-project-id") # Add a default for local testing if not set
+GCP_LOCATION = os.getenv("GCP_LOCATION", "your-gcp-location")     # e.g., "us-central1"
 
 @app.post("/check_build_feasibility", response_model=FeasibilityResponse)
 async def check_build_feasibility(protocol_snippet: dict): # Simplified input for now
@@ -45,14 +53,42 @@ async def execute_build_plan_endpoint(plan_id: str):
     if plan.status != 'approved':
         raise HTTPException(status_code=400, detail=f"Build plan must be in 'approved' state to execute. Current status: {plan.status}")
 
-    success = global_state_manager.update_plan_status(plan_id, 'execution_started')
-    if not success:
-        # This case implies the plan was deleted between get and update, or another issue.
-        raise HTTPException(status_code=500, detail="Failed to update plan status for execution, plan may have been modified or deleted.")
+    if not GCP_PROJECT_ID or GCP_PROJECT_ID == "your-gcp-project-id":
+        global_state_manager.update_plan_status(plan_id, 'failed')
+        raise HTTPException(status_code=500, detail="GCP_PROJECT_ID is not configured. Cannot execute plan.")
+    if not GCP_LOCATION or GCP_LOCATION == "your-gcp-location":
+        global_state_manager.update_plan_status(plan_id, 'failed')
+        raise HTTPException(status_code=500, detail="GCP_LOCATION is not configured. Cannot execute plan.")
 
-    return {"message": "Build plan execution started", "plan_id": plan_id, "new_status": "execution_started"}
+    global_state_manager.update_plan_status(plan_id, 'execution_started')
 
-# Placeholder for root path or API documentation
+    # Ensure plan.error_details is reset if plan is re-executed (optional, depends on desired behavior)
+    # plan.error_details = None # Uncomment if errors should be cleared on new execution attempt
+    # global_state_manager.store_build_plan(plan) # Persist the cleared error
+
+    for step_index, step in enumerate(plan.steps):
+        success = execute_build_step(step, project_id=GCP_PROJECT_ID, location=GCP_LOCATION)
+        if not success:
+            global_state_manager.update_plan_status(plan_id, 'failed')
+
+            error_info = ExecutionError(
+                step_index=step_index,
+                step_name=step.name,
+                step_type=step.type,
+                message=f"Execution failed at step {step_index + 1}: {step.action} {step.type} {step.name}"
+            )
+            plan.status = 'failed'
+            plan.error_details = error_info # Assign the structured error
+            global_state_manager.store_build_plan(plan) # Re-store plan to save error details
+
+            # The HTTPException detail can be the dict representation of error_info for client consumption
+            raise HTTPException(status_code=500, detail=error_info.model_dump())
+
+    global_state_manager.update_plan_status(plan_id, 'completed')
+    plan.error_details = None # Clear any previous error details on successful completion
+    global_state_manager.store_build_plan(plan) # Persist the cleared error state
+    return {"message": "Build plan executed successfully", "plan_id": plan_id, "new_status": "completed"}
+
 @app.get("/")
 async def root():
     return {"message": "Agent 3: Experiment Builder. See /docs for API details."}
